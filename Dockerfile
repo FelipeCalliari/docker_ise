@@ -4,6 +4,7 @@ RUN <<EOF
 apt-get -qq update
 apt-get install -y --install-recommends firefox
 apt-get install -y --install-recommends \
+    ca-certificates libusb-1.0-0 libftdi1 udev \
     libncurses5 libqt4-core libx11-6 \
     libsm6 libxi6 libgconf-2-4 libxrender1 \
     libxrandr2 libfreetype6 libfontconfig1 \
@@ -14,6 +15,7 @@ apt-get install -y --install-recommends \
     mtools xinetd wget curl rsync git minicom \
     libtinfo5 libtool bison tmux nano
 apt-get -qq -y upgrade
+rm -rf /var/lib/apt/lists/*
 rpcbind
 EOF
 
@@ -21,11 +23,12 @@ ENV TERM xterm-256color
 
 #### Don't use dash on Ubuntu
 
-RUN which dash &> /dev/null && (\
-    echo "dash dash/sh boolean false" | debconf-set-selections && \
-    DEBIAN_FRONTEND=noninteractive dpkg-reconfigure dash) || \
-    echo "Skipping dash reconfigure (not applicable)"
-
+RUN <<EOF
+which dash &> /dev/null && (\
+echo "dash dash/sh boolean false" | debconf-set-selections && \
+DEBIAN_FRONTEND=noninteractive dpkg-reconfigure dash) || \
+echo "Skipping dash reconfigure (not applicable)"
+EOF
 
 #### Install Xilinx
 
@@ -42,16 +45,6 @@ yes | /xilinx/Xilinx_ISE_DS_14.7_1015_1/bin/lin64/batchxsetup --batch /headless-
 cd /
 rm -rf /xilinx
 EOF
-
-# wget ${SERVER_HOST}/Xilinx_ISE_DS_14.7_1015_1.tar 
-# cd /xilinx
-# tar xvf Xilinx_ISE_DS_14.7_1015_1.tar
-# curl ${SERVER_HOST}/Xilinx_ISE_DS_14.7_1015_1.tar -o /xilinx/Xilinx_ISE_DS_14.7_1015_1.tar
-
-#ADD Xilinx_ISE_DS_14.7_1015_1.tar /xilinx
-#RUN yes | /xilinx/Xilinx_ISE_DS_14.7_1015_1/bin/lin64/batchxsetup --batch /headless-install.sh
-#RUN rm /bin/sh && ln -s /bin/bash /bin/sh
-#RUN rm -rf /xilinx
 
 RUN <<EOF
 mv /opt/Xilinx/14.7/ISE_DS/ISE/lib/lin64/libstdc++.so.6 /opt/Xilinx/14.7/ISE_DS/ISE/lib/lin64/libstdc++.so.6.distrib
@@ -70,7 +63,7 @@ RUN useradd -d /home/${THE_USER} -s /bin/bash -m ${THE_USER} -u ${UID_GID} -g ${
 
 ADD Xilinx.lic /home/${THE_USER}/.Xilinx/
 
-COPY <<EOF /home/${THE_USER}/.config/Xilinx/ISE.conf 
+COPY <<EOF /home/${THE_USER}/.config/Xilinx/ISE.conf
 [14.7]
 Project%20Navigator/TipOfDay/ShowTipAtStartUp=false
 ECS/Settings/ISETEXTEDITOR="bUseSpace=true;bShowWhitespace=false;bShowEol=false;bShowIndent=false;bUseBlackColorScheme=false;tabWidth=4;font=Courier,12,-1,5,50,0,0,0,0,0;longLinesLimit=80;bShowLineNumbers=true;bShowOutline=false;"
