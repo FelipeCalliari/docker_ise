@@ -22,6 +22,6 @@ docker run -it --rm \
     --net=host --ipc=host \
     --mac-address "$LICENSE_MAC" \
     --name docker-ise \
-    xilinx_ise $@
+    xilinx-ise:14.7 $@
 
 #bash
