@@ -1,5 +1,8 @@
 FROM ubuntu:14.04
 
+# Temporary mount point for bind mounts.
+ENV TMP_MNT=/tmp/mnt
+
 RUN <<-EOF
 apt-get -qq update
 apt-get install -y --install-recommends \
@@ -22,6 +25,7 @@ locale-gen en_US.UTF-8
 update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
 rpcbind
 rm -rf /var/lib/apt/lists/*
+mkdir -p ${TMP_MNT}
 EOF
 
 ENV LANG=en_US.UTF-8
@@ -41,16 +45,17 @@ EOF
 #### Install Xilinx
 
 ARG SERVER_HOST
+ARG XILINX_TAR
+
 COPY headless-install.sh /
 
-RUN <<-EOF
+RUN --mount=type=bind,src=${XILINX_TAR},dst=${TMP_MNT}/ise.tar <<-EOF
+    rm -rf /xilinx
     set -eux
     mkdir -p /xilinx
     cd /xilinx
-    echo "Downloading Xilinx_ISE_DS_14.7_1015_1.tar from ${SERVER_HOST}"
-    wget ${SERVER_HOST}/Xilinx_ISE_DS_14.7_1015_1.tar
-    tar xvf Xilinx_ISE_DS_14.7_1015_1.tar
-    yes | /xilinx/Xilinx_ISE_DS_14.7_1015_1/bin/lin64/batchxsetup --batch /headless-install.sh
+    tar xvf ${TMP_MNT}/ise.tar
+    yes | /xilinx/*/bin/lin64/batchxsetup --batch /headless-install.sh
     cd /
     rm -rf /xilinx
     mv /opt/Xilinx/14.7/ISE_DS/ISE/lib/lin64/libstdc++.so.6 /opt/Xilinx/14.7/ISE_DS/ISE/lib/lin64/libstdc++.so.6.distrib
@@ -78,6 +83,7 @@ useradd -d ${GUEST_HOME} -s /bin/bash -m ${GUEST_USER} -u ${UID_GID} -g ${UID_GI
 passwd -d ${GUEST_USER}
 usermod -aG plugdev ${GUEST_USER}
 usermod -aG dialout ${GUEST_USER}
+mkdir -p ${GUEST_HOME}/.Xilinx
 EOF
 
 ADD Xilinx.lic /home/${GUEST_USER}/.Xilinx/

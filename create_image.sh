@@ -20,16 +20,15 @@ if [ ! -f $XILINX_LIC ]; then
     exit 1
 fi
 
-echo -e "${GREEN}Success:${NC} running http.server and docker build.."
-
-# run http.server in background
-# to serve the installation files..
-tmux new -s createdocker -d "python3 -m http.server"
+# # Run http.server in background to serve the installation files..
+# echo -e "${GREEN}Success:${NC} running http.server and docker build.."
+# tmux new -s createdocker -d "python3 -m http.server"
 
 # build docker
-docker build --build-arg SERVER_HOST=host.docker.internal:8000 \
+docker build --build-arg XILINX_TAR="${XILINX_TAR}" \
+             --build-arg SERVER_HOST=host.docker.internal:8000 \
              --add-host=host.docker.internal:host-gateway \
              -f Dockerfile -t xilinx-ise:14.7 .
 
-# close tmux session
-tmux kill-session -t createdocker
+# # close tmux session
+# tmux kill-session -t createdocker
