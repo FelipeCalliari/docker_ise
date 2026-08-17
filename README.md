@@ -27,7 +27,34 @@ This script will create an `http.server` using Python to host `Xilinx_ISE_DS_14.
 Just run: 
 
 ```bash
+./run_docker.sh                 # run ISE
+./run_docker.sh --bash          # run bash as xilinx (user)
+./run_docker.sh --root --bash   # run bash as root
+```
+
+This mounts your home directory inside `/home/xilinx/shared` and X11 socket into the container so the ISE GUI can run and display on your host.
+
+## How to use
+
+```bash
+# Docker image creation. Do this only on the first time.
+./create_image.sh
+
+# Optional: install cable firmware + udev rules on the host
+# (needed only if you want the JTAG cable loaded by the host,
+# or to run ISE on the host itself; the container loads the
+# firmware automatically via fxload)
+./setup_host.sh
+
+# After that, just run this command to start ISE
 ./run_docker.sh
 ```
 
+## Programming the FPGAs
 
+Programming the CPLDs and/or FPGAs traditionally requires the proprietary Jungo `windrvr6` driver, which only targets Linux 2.6.x (and maybe some early 3.x kernels) — a non-starter on current systems.
+
+To work around this, the image installs the following tools instead:
+
+- **[`usb-driver`](git://git.zerfleddert.de/usb-driver)** (a.k.a. `libusb-driver`): A `LD_PRELOAD`-able shim that reimplements the `windrvr6` API on top of `libusb`, so Xilinx's own tools (`impact`, `ise`) talk to the cable without the kernel driver.
+- **`urJTAG`**: A command-line tool for JTAG-aware devices, with broad cable and board support via `libusb`, as a fallback/alternative to the Xilinx tools.

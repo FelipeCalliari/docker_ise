@@ -24,8 +24,9 @@ fi
 # echo -e "${GREEN}Success:${NC} running http.server and docker build.."
 # tmux new -s createdocker -d "python3 -m http.server"
 
-# build docker
-docker build --build-arg XILINX_TAR="${XILINX_TAR}" \
+# build docker # --no-cache --progress=plain
+docker build --no-cache --progress=plain \
+             --build-arg XILINX_TAR="${XILINX_TAR}" \
              --build-arg SERVER_HOST=host.docker.internal:8000 \
              --add-host=host.docker.internal:host-gateway \
              -f Dockerfile -t xilinx-ise:14.7 .

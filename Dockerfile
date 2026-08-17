@@ -4,6 +4,7 @@ FROM ubuntu:14.04
 ENV TMP_MNT=/tmp/mnt
 
 RUN <<-EOF
+set -e
 apt-get -qq update
 apt-get install -y --install-recommends \
     firefox ca-certificates udev \
@@ -18,7 +19,7 @@ apt-get install -y --install-recommends \
     libxrender-dev libxrandr-dev libfontconfig-dev \
     libtinfo5 libtool bison tmux nano screen dosfstools \
     make cmake build-essential g++ gcc gcc-multilib \
-    mtools xinetd wget curl rsync minicom \
+    mtools xinetd wget curl rsync minicom urjtag \
     xfonts-75dpi xfonts-100dpi
 apt-get -qq -y upgrade
 locale-gen en_US.UTF-8
@@ -31,7 +32,7 @@ EOF
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
-ENV TERM xterm-256color
+ENV TERM=xterm-256color
 
 #### Don't use dash on Ubuntu
 
@@ -66,13 +67,28 @@ RUN --mount=type=bind,src=${XILINX_TAR},dst=${TMP_MNT}/ise.tar <<-EOF
     ln -s /usr/lib/x86_64-linux-gnu/libXpm.so.4 /lib/x86_64-linux-gnu/libXp.so.6
 EOF
 
-#RUN <<EOF
-#cd /opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/digilent/
-#bash install_digilent.sh
+#### USB driver wrapper for Digilent / Platform Cable (libusb-driver)
+
+#RUN <<-EOF
+#    cd /opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/digilent/
+#    bash install_digilent.sh
 #EOF
 
-# ENV LD_LIBRARY_PATH /lib:/lib64:/usr/lib:/usr/lib64
+COPY usb-driver/ /opt/usb-driver
 
+RUN <<-EOF
+    cd /opt/usb-driver
+    make
+    ./setup_pcusb /opt/Xilinx/14.7/ISE_DS/ISE
+EOF
+
+# ENV LD_LIBRARY_PATH=/lib:/lib64:/usr/lib:/usr/lib64
+ENV LD_PRELOAD=/opt/usb-driver/libusb-driver.so
+
+# Load the JTAG cable firmware at startup. udev does not run inside
+# the container, so fxload must load the firmware by hand.
+COPY firmware-load.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/firmware-load.sh
 ENV GUEST_USER=xilinx
 ENV GUEST_HOME=/home/${GUEST_USER}
 ENV UID_GID=1000
@@ -84,6 +100,15 @@ passwd -d ${GUEST_USER}
 usermod -aG plugdev ${GUEST_USER}
 usermod -aG dialout ${GUEST_USER}
 mkdir -p ${GUEST_HOME}/.Xilinx
+EOF
+
+# Allow the guest user to load the cable firmware (needs write access
+# to /dev/bus/usb, which belongs to root on the host). And load the
+# cable firmware on every interactive shell too (e.g. --bash).
+RUN <<EOF
+echo "${GUEST_USER} ALL=(ALL) NOPASSWD: /usr/local/bin/firmware-load.sh" > /etc/sudoers.d/${GUEST_USER}-firmware
+chmod 440 /etc/sudoers.d/${GUEST_USER}-firmware
+echo "sudo -n /usr/local/bin/firmware-load.sh 2>/dev/null" >> ${GUEST_HOME}/.bashrc
 EOF
 
 ADD Xilinx.lic /home/${GUEST_USER}/.Xilinx/
@@ -100,5 +125,5 @@ USER ${GUEST_USER}
 WORKDIR ${GUEST_HOME}
 ENV HOME=${GUEST_HOME}
 SHELL ["/bin/bash", "-c"]
-CMD source /opt/Xilinx/14.7/ISE_DS/settings64.sh && ise
+CMD sudo -n /usr/local/bin/firmware-load.sh; source /opt/Xilinx/14.7/ISE_DS/settings64.sh && ise
 
