@@ -17,7 +17,7 @@ This `Dockerfile` create a working environment with all the tools needed to deve
 With all the needed files, Dockerfile, etc in the same directory, just run:
 
 ```bash
-./create_image.sh
+./create-image.sh
 ```
 
 This script will create an `http.server` using Python to host `Xilinx_ISE_DS_14.7_1015_1.tar` to Docker build process. This HACK seems a bit messy but will reduce the image size significantly (it will not create a layer with `Xilinx_ISE_DS_14.7_1015_1.tar` ~8GB).
@@ -27,9 +27,16 @@ This script will create an `http.server` using Python to host `Xilinx_ISE_DS_14.
 Just run: 
 
 ```bash
-./run_docker.sh                 # run ISE
-./run_docker.sh --bash          # run bash as xilinx (user)
-./run_docker.sh --root --bash   # run bash as root
+./run-docker.sh                 # run ISE as xilinx (user)
+./run-docker.sh --root          # run ISE as root
+./run-docker.sh --bash          # run bash as xilinx (user)
+./run-docker.sh --root --bash   # run bash as root
+```
+
+In a shell, load the ISE environment before calling the tools (`ise`, `impact`, ...):
+
+```bash
+source /opt/Xilinx/14.7/ISE_DS/settings64.sh
 ```
 
 This mounts your home directory inside `/home/xilinx/shared` and X11 socket into the container so the ISE GUI can run and display on your host.
@@ -38,16 +45,16 @@ This mounts your home directory inside `/home/xilinx/shared` and X11 socket into
 
 ```bash
 # Docker image creation. Do this only on the first time.
-./create_image.sh
+./create-image.sh
 
-# Optional: install cable firmware + udev rules on the host
-# (needed only if you want the JTAG cable loaded by the host,
-# or to run ISE on the host itself; the container loads the
-# firmware automatically via fxload)
-./setup_host.sh
+# Optional: install cable firmware + udev rules on the host.
+# The container loads the firmware via fxload only when it starts;
+# with the host rules, the cable is also loaded when plugged in
+# later (otherwise run `sudo firmware-load.sh` inside the container).
+./setup-host.sh
 
 # After that, just run this command to start ISE
-./run_docker.sh
+./run-docker.sh
 ```
 
 ## Programming the FPGAs

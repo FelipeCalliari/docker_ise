@@ -105,10 +105,26 @@ EOF
 # Allow the guest user to load the cable firmware (needs write access
 # to /dev/bus/usb, which belongs to root on the host). And load the
 # cable firmware on every interactive shell too (e.g. --bash).
+# /etc/motd is only shown on PAM logins, so .bashrc prints it.
 RUN <<EOF
 echo "${GUEST_USER} ALL=(ALL) NOPASSWD: /usr/local/bin/firmware-load.sh" > /etc/sudoers.d/${GUEST_USER}-firmware
 chmod 440 /etc/sudoers.d/${GUEST_USER}-firmware
+rm -f /etc/motd
+cat > /etc/motd <<'MOTD'
+
+ Xilinx ISE 14.7 (docker)
+
+ The JTAG cable firmware is loaded when the shell starts. udev does not
+ run inside the container, so if the cable is plugged in later (or is
+ not detected by iMPACT), load the firmware by hand:
+
+     sudo firmware-load.sh
+
+MOTD
+echo "cat /etc/motd" >> ${GUEST_HOME}/.bashrc
 echo "sudo -n /usr/local/bin/firmware-load.sh 2>/dev/null" >> ${GUEST_HOME}/.bashrc
+echo "cat /etc/motd" >> /root/.bashrc
+echo "/usr/local/bin/firmware-load.sh 2>/dev/null" >> /root/.bashrc
 EOF
 
 ADD Xilinx.lic /home/${GUEST_USER}/.Xilinx/
