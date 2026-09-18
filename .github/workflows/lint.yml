@@ -1,0 +1,27 @@
+name: lint
+
+# The image itself cannot be built in CI: it needs the ~8GB ISE installer tar,
+# which is not redistributable. This only guards the scripts and the Dockerfile.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shellcheck
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck create-image.sh run-docker.sh setup-host.sh firmware-load.sh
+
+  hadolint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          config: .hadolint.yaml

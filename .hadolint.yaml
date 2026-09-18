@@ -1,0 +1,24 @@
+ignored:
+  # Pinning apt package versions is pointless on an EOL release whose only
+  # archive serves a single frozen version of everything.
+  - DL3008
+  # The big apt-get layer deliberately keeps install/upgrade/cleanup together.
+  - DL3009
+  # --install-recommends is intentional: the ISE installer relies on libraries
+  # that only come in as recommends. See the comment in the Dockerfile.
+  - DL3015
+  # `cd` inside a heredoc RUN is local to that layer; WORKDIR would leak into
+  # the following instructions.
+  - DL3003
+  # `yes | batchxsetup` must NOT use pipefail: `yes` dies of SIGPIPE by design.
+  - DL4006
+  # The installer path is a glob (/xilinx/*/bin/lin64/batchxsetup) because the
+  # tar's top-level directory name is not fixed.
+  - SC2211
+  # UID comes from the host's `id -u`, so it is not the huge-UID case DL3046
+  # warns about.
+  - DL3046
+  # CMD must be shell form: it has to `source` settings64.sh before `ise`.
+  - DL3025
+  # USER is ${GUEST_USER}, resolved at build time.
+  - DL3066
