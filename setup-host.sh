@@ -21,8 +21,9 @@ fi
 
 # Distro detection
 SERIAL_GROUP="uucp"     # Arch default
+# shellcheck source=/dev/null
 [[ -r /etc/os-release ]] && source /etc/os-release
-case "$ID" in
+case "${ID:-}" in
     debian|ubuntu|linuxmint)
         SERIAL_GROUP="dialout"
         ;;
@@ -35,8 +36,9 @@ case "$ID" in
 esac
 
 echo "==> Creating temporary container..."
-ID=$(docker create "$IMAGE")
-trap 'docker rm "$ID" >/dev/null 2>&1 || true' EXIT
+CONTAINER=$(docker create "$IMAGE")
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"; docker rm "$CONTAINER" >/dev/null 2>&1 || true' EXIT
 
 echo "==> Adding user to serial device groups..."
 # plugdev exists on Debian/Ubuntu; uucp/dialout cover Arch and SUSE.
@@ -54,18 +56,16 @@ if ! id -nG | grep -qw "$SERIAL_GROUP"; then
 fi
 
 echo "==> Installing cable firmware (xusb*.hex) to /usr/share..."
-TMP_DIR=$(mktemp -d)
-trap 'rm -rf "$TMP_DIR"; docker rm "$ID" >/dev/null 2>&1 || true' EXIT
 # The container is only created, not started, so list with a throwaway run.
 for fw in $(docker run --rm --entrypoint sh "$IMAGE" -c 'ls /usr/share/xusb*.hex 2>/dev/null'); do
     name=$(basename "$fw")
-    docker cp "$ID:$fw" "$TMP_DIR/$name"
+    docker cp "$CONTAINER:$fw" "$TMP_DIR/$name"
     sudo cp "$TMP_DIR/$name" /usr/share/
     echo "    /usr/share/$name"
 done
 
 echo "==> Installing udev rules (xusbdfwu.rules)..."
-docker cp "$ID:/etc/udev/rules.d/xusbdfwu.rules" "$TMP_DIR/"
+docker cp "$CONTAINER:/etc/udev/rules.d/xusbdfwu.rules" "$TMP_DIR/"
 # Match only the usb_device (SUBSYSTEMS also fires for its interfaces)
 # and call the host's fxload. libusb's fxload (Arch AUR) has no -D, it
 # takes the device as -p bus,dev.
@@ -73,6 +73,7 @@ SED=(-e '/RUN+=/{s/SUBSYSTEMS=="usb"/SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device
      -e "s#/sbin/fxload#$FXLOAD#")
 FXLOAD_USAGE=$("$FXLOAD" -h 2>&1 || true)
 if [[ "$FXLOAD_USAGE" == *"-p <bus,addr>"* ]]; then
+    # shellcheck disable=SC2016  # $env{} is udev syntax, not shell expansion
     SED+=(-e 's/-D \$tempnode/-p $env{BUSNUM},$env{DEVNUM}/')
 fi
 sed "${SED[@]}" "$TMP_DIR/xusbdfwu.rules" > "$TMP_DIR/xusbdfwu.rules.host"

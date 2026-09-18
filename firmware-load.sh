@@ -27,7 +27,9 @@ fi
 # Prints "vid:pid" of a usbfs node (idVendor/idProduct, little endian,
 # at offset 8 of the device descriptor).
 usb_id() {
-    local b
+    local -a b
+    # Four hex bytes, whitespace-separated; word splitting is the point here.
+    # shellcheck disable=SC2207
     b=($(od -An -tx1 -j8 -N4 "$1" 2>/dev/null)) || return 1
     [[ ${#b[@]} -eq 4 ]] || return 1
     echo "${b[1]}${b[0]}:${b[3]}${b[2]}"
