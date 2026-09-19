@@ -4,13 +4,17 @@ set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
 IMAGE=${IMAGE:-xilinx-ise:14.7}
-NETWORK=${NETWORK:-host}
 SHARED_DIR=${SHARED_DIR:-$HOME}
 
-# MAC address the ISE license is locked to. Only applied on bridge-style
-# networks: Docker silently ignores --mac-address under --net=host, where
-# the container sees the host's real interfaces.
-LICENSE_MAC=${LICENSE_MAC:-"01:ab:23:cd:45:ef"}
+# Optional MAC address for licenses node-locked to one. Docker silently
+# ignores --mac-address under --net=host (the container sees the host's real
+# interfaces), so setting it moves the default network to bridge.
+LICENSE_MAC=${LICENSE_MAC:-}
+if [[ -n "$LICENSE_MAC" ]]; then
+    NETWORK=${NETWORK:-bridge}
+else
+    NETWORK=${NETWORK:-host}
+fi
 
 usage() {
     cat <<USAGE
@@ -21,9 +25,10 @@ Usage: $(basename "$0") [--root] [--bash] [-- <docker run args>...]
 
 Environment:
   IMAGE        Image to run (default: xilinx-ise:14.7)
-  NETWORK      Docker network mode (default: host). Use e.g. 'bridge' to get
-               the license MAC applied -- --mac-address is a no-op on host.
-  LICENSE_MAC  MAC address for the license lock (default: 01:ab:23:cd:45:ef)
+  NETWORK      Docker network mode (default: host, or bridge when LICENSE_MAC
+               is set -- --mac-address is a no-op on host)
+  LICENSE_MAC  MAC address for a node-locked license (default: none). Must be
+               unicast, e.g. 02:ab:23:cd:45:ef
   SHARED_DIR   Host directory mounted at <home>/shared (default: \$HOME)
 USAGE
 }
@@ -49,6 +54,23 @@ done
 # /bin/bash goes first: anything after '--' is arguments to it.
 if [[ "$USE_BASH" == 1 ]]; then
     DOCKER_ARGS=("/bin/bash" "${DOCKER_ARGS[@]}")
+fi
+
+if [[ -n "$LICENSE_MAC" ]]; then
+    if [[ ! "$LICENSE_MAC" =~ ^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$ ]]; then
+        echo "Error: LICENSE_MAC '$LICENSE_MAC' is not a MAC address (xx:xx:xx:xx:xx:xx)." >&2
+        exit 1
+    fi
+    # An odd first octet is a multicast address, which the bridge refuses
+    # ("cannot assign requested address").
+    if (( (16#${LICENSE_MAC:0:2} & 1) != 0 )); then
+        echo "Error: LICENSE_MAC '$LICENSE_MAC' is multicast; the first octet must be even." >&2
+        exit 1
+    fi
+    if [[ "$NETWORK" == "host" ]]; then
+        echo "Error: LICENSE_MAC has no effect with NETWORK=host; unset NETWORK or pick e.g. bridge." >&2
+        exit 1
+    fi
 fi
 
 docker image inspect "$IMAGE" >/dev/null 2>&1 \
@@ -92,7 +114,13 @@ RUN_ARGS+=(--net="$NETWORK")
 if [[ "$NETWORK" == "host" ]]; then
     RUN_ARGS+=(--ipc=host)
 else
-    RUN_ARGS+=(--mac-address "$LICENSE_MAC")
+    # Off the host network the hostname defaults to the container ID, and the
+    # X cookie (keyed by <hostname>/unix:<display>) is no longer found. Keep
+    # the host's name. uname -n, since 'hostname' is not installed everywhere.
+    RUN_ARGS+=(--hostname "$(uname -n)")
+    if [[ -n "$LICENSE_MAC" ]]; then
+        RUN_ARGS+=(--mac-address "$LICENSE_MAC")
+    fi
 fi
 
 docker run -it --rm \

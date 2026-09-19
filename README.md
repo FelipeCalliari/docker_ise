@@ -117,8 +117,8 @@ This mounts your home directory inside `/home/xilinx/shared` and X11 socket into
 | `INSTALL_METHOD` | `http` | `create-image.sh` — `http` or `bind`, see [How the installer reaches the build](#how-the-installer-reaches-the-build) |
 | `INSTALLER_PORT` | `8000` | `create-image.sh` — local port the installer is served on with `INSTALL_METHOD=http` |
 | `SHARED_DIR` | `$HOME` | `run-docker.sh` — host dir mounted at `~/shared` |
-| `NETWORK` | `host` | `run-docker.sh` — Docker network mode |
-| `LICENSE_MAC` | `01:ab:23:cd:45:ef` | `run-docker.sh` — only applied when `NETWORK` is not `host` |
+| `NETWORK` | `host` (`bridge` if `LICENSE_MAC` is set) | `run-docker.sh` — Docker network mode |
+| `LICENSE_MAC` | none | `run-docker.sh` — MAC for a node-locked license; needs a non-`host` `NETWORK` |
 
 ### Changing the container's MAC address
 
@@ -128,22 +128,27 @@ ignores `--mac-address` under `--net=host`, because in that mode the container s
 the host's network namespace and simply sees the host's real interfaces (`wlan0`,
 `eth0`, ...) — there is no container interface to assign a MAC to.
 
-So set `NETWORK` to anything other than `host`, and `run-docker.sh` will add
-`--mac-address` for you:
+So setting `LICENSE_MAC` switches the default network to `bridge` and adds
+`--mac-address` for you (any other non-`host` `NETWORK` works too; `NETWORK=host`
+with `LICENSE_MAC` is an error):
 
 ```bash
-NETWORK=bridge LICENSE_MAC=01:ab:23:cd:45:ef ./run-docker.sh
+LICENSE_MAC=02:ab:23:cd:45:ef ./run-docker.sh
 ```
+
+The MAC must be unicast (even first octet): Docker refuses a multicast address such
+as `01:...` on the bridge with `cannot assign requested address`, so the script
+rejects it up front.
 
 Check that it took effect inside the container:
 
 ```bash
-NETWORK=bridge ./run-docker.sh --bash
+LICENSE_MAC=02:ab:23:cd:45:ef ./run-docker.sh --bash
 # then:
 cat /sys/class/net/eth0/address     # should print the MAC you asked for
 ```
 
-Two things change when you drop `--net=host`:
+Three things change when you drop `--net=host`:
 
 - `--ipc=host` is dropped with it (it only exists to pair with host networking).
   `QT_X11_NO_MITSHM=1` is already set, so the GUI does not depend on shared IPC.
@@ -151,9 +156,11 @@ Two things change when you drop `--net=host`:
   reachable only on the host's loopback would no longer be visible. Node-locked
   licenses (the usual WebPACK case) are unaffected.
 
-If the GUI stops working on bridge networking, the X11 cookie is usually the cause —
-the container is no longer on the host's network namespace, so `DISPLAY=:0` over the
-UNIX socket still works, but a `DISPLAY` pointing at `localhost:0` (TCP) will not.
+- Off the host network the container's hostname would default to its ID, and the X
+  cookie in `~/.Xauthority` (keyed by `<hostname>/unix:<display>`) would no longer be
+  found, so the GUI would not open. `run-docker.sh` passes `--hostname "$(uname -n)"`
+  on any non-`host` network to keep it valid. The UNIX socket still works, but a
+  `DISPLAY` pointing at `localhost:N` (TCP) will not.
 
 ### What `setup-host.sh` changes on your host
 
