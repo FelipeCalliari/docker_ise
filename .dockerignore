@@ -3,9 +3,10 @@
 # Without this, the build context includes the ~8GB ISE tar, the whole
 # private/ directory and .git -- all uploaded to the daemon on every build.
 #
-# The ISE tar stays whitelisted because RUN --mount=type=bind,src= resolves
-# its source in the build context; it is bind-mounted, never copied into a
-# layer, so it costs nothing beyond the context scan.
+# The ISE tar stays whitelisted for INSTALL_METHOD=bind, whose
+# RUN --mount=type=bind,src= resolves its source in the build context.
+# BuildKit only transfers the paths a build uses, so with INSTALL_METHOD=http
+# the tar is never sent. With bind it is copied into the BuildKit cache.
 *
 
 !Xilinx_ISE_DS_14.7_1015_1.tar

@@ -52,6 +52,16 @@ EOF
 #### Install Xilinx
 
 ARG XILINX_TAR
+# How the install RUN below gets the tar (create-image.sh sets these):
+#   http - streamed from INSTALLER_URL, which create-image.sh serves while
+#          the build runs with --network=host. Nothing is copied.
+#   bind - bind-mounted from the build context. BuildKit first copies it
+#          into its cache, so the build needs ~8GB more disk.
+ARG INSTALL_METHOD=http
+ARG INSTALLER_URL=http://127.0.0.1:8000
+# A RUN's --mount cannot be made conditional, so for http a small file that
+# is never read gets mounted in place of the tar.
+ARG INSTALLER_SRC=headless-install.conf
 
 # Trim what gets kept from the install. Both prunes MUST happen inside the
 # same RUN as the installation: a `rm` in a later layer hides the files but
@@ -74,12 +84,20 @@ ARG INSTALL_EDK=0
 
 COPY headless-install.conf /
 
-RUN --mount=type=bind,src=${XILINX_TAR},dst=${TMP_MNT}/ise.tar <<-EOF
+RUN --mount=type=bind,src=${INSTALLER_SRC},dst=${TMP_MNT}/ise.tar <<-EOF
     rm -rf /xilinx
     set -eux
     mkdir -p /xilinx
     cd /xilinx
-    tar xvf ${TMP_MNT}/ise.tar
+    if [ "${INSTALL_METHOD}" = "bind" ]; then
+        tar xvf ${TMP_MNT}/ise.tar
+    else
+        # Stream the download into tar, so the tar never lands on disk.
+        # pipefail stays in the subshell because the `yes |` below relies
+        # on `yes` dying of SIGPIPE. /bin/sh is bash by now (see the dash
+        # reconfigure above); dash has no pipefail.
+        ( set -o pipefail; wget --progress=dot:giga -O- "${INSTALLER_URL}/${XILINX_TAR}" | tar xv )
+    fi
     yes | /xilinx/*/bin/lin64/batchxsetup --batch /headless-install.conf
     cd /
     rm -rf /xilinx /headless-install.conf

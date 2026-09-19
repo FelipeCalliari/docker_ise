@@ -8,7 +8,8 @@ This `Dockerfile` create a working environment with all the tools needed to deve
 
 ## Requirements
 
-- Docker with BuildKit (Docker 23 or newer) — the build uses `RUN --mount=type=bind`.
+- Docker with BuildKit (Docker 23 or newer) — the Dockerfile uses heredoc `RUN <<EOF` blocks.
+- `python3` and `curl` on the host — by default `create-image.sh` serves the installer to the build over HTTP (see `INSTALL_METHOD` below).
 - Clone with submodules, otherwise the build fails partway through the ISE install:
 
   ```bash
@@ -19,6 +20,7 @@ This `Dockerfile` create a working environment with all the tools needed to deve
 - You must download Xilinx ISE 14.7 tar file from Xilinx's website.
 - You must have an Xilinx License file, you can obtain a WebPack License, for example.
 - Both `Xilinx_ISE_DS_14.7_1015_1.tar` and `Xilinx.lic` must be inside this folder when creating the Docker image.
+  The tar may be a symlink, e.g. to an external disk (except with `INSTALL_METHOD=bind`).
 
 ## Building the image
 
@@ -59,9 +61,32 @@ alternative to `INSTALL_EDK=0`: Xilinx's edition matrix (XMP075) lists EDK as
 included in WebPACK/Logic/DSP too, "Device Limited to Zynq-7000 EPP". Measured,
 Logic Edition saved only ~0.1GB over System Edition once the prunes are applied.
 
-The ~8 GB installer tar is **bind-mounted** into the build (`RUN --mount=type=bind`)
-rather than copied, so it never becomes an image layer. A `.dockerignore` keeps the
-rest of the directory out of the build context.
+### How the installer reaches the build
+
+The ~8GB installer tar never becomes an image layer. `INSTALL_METHOD` picks how
+the install step reads it:
+
+| `INSTALL_METHOD` | How | Needs |
+|---|---|---|
+| `http` (default) | `create-image.sh` serves the tar on `127.0.0.1:8000` (`INSTALLER_PORT` changes the port) with a throwaway `python3 -m http.server` that exposes only the tar, and builds with `--network=host`; the install step streams it with `wget -O- ... \| tar x`. | `python3` and `curl` on the host. The tar may be a symlink, e.g. to an external disk. |
+| `bind` | The old `RUN --mount=type=bind` from the build context. | The tar as a real file or hard link in this directory (BuildKit does not follow symlinks). |
+
+```bash
+INSTALL_METHOD=bind ./create-image.sh
+```
+
+Both give the same image. The difference is the BuildKit cache: a bind mount
+does not read the file in place, BuildKit first copies the build context into
+its cache. Measured on a `--no-cache` build, `bind` left a "local source for
+context" entry of 8.36GB in `docker buildx du` (the whole tar) and took ~1 min
+longer; with `http` the context was 182kB. That copy stays until BuildKit's
+garbage collection runs, or until you drop it:
+
+```bash
+docker builder prune -f --filter type=source.local
+```
+
+A `.dockerignore` keeps the rest of the directory out of the build context.
 
 ## Running the image
 
@@ -89,6 +114,8 @@ This mounts your home directory inside `/home/xilinx/shared` and X11 socket into
 | `IMAGE` | `xilinx-ise:14.7` | all scripts |
 | `XILINX_TAR` | `Xilinx_ISE_DS_14.7_1015_1.tar` | `create-image.sh` |
 | `XILINX_LIC` | `Xilinx.lic` | `create-image.sh` |
+| `INSTALL_METHOD` | `http` | `create-image.sh` — `http` or `bind`, see [How the installer reaches the build](#how-the-installer-reaches-the-build) |
+| `INSTALLER_PORT` | `8000` | `create-image.sh` — local port the installer is served on with `INSTALL_METHOD=http` |
 | `SHARED_DIR` | `$HOME` | `run-docker.sh` — host dir mounted at `~/shared` |
 | `NETWORK` | `host` | `run-docker.sh` — Docker network mode |
 | `LICENSE_MAC` | `01:ab:23:cd:45:ef` | `run-docker.sh` — only applied when `NETWORK` is not `host` |
